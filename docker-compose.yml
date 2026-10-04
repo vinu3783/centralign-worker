@@ -1,0 +1,18 @@
+services:
+  app:
+    build: .
+    image: centralign-worker
+    ports:
+      - "8000:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      # The UI is served by the backend inside the container, so the browser tool targets it there.
+      FRONTEND_URL: http://127.0.0.1:8000
+    volumes:
+      - centralign-data:/data
+    restart: unless-stopped
+
+volumes:
+  centralign-data:
