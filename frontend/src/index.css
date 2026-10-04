@@ -1,0 +1,14 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-slate-50 text-slate-800 antialiased; }
+
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(79 70 229 / 0.35); } 100% { box-shadow: 0 0 0 10px rgb(79 70 229 / 0); } }
+.pulse-ring { animation: pulse-ring 1.4s ease-out infinite; }
+@keyframes slide-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.slide-in { animation: slide-in .25s ease-out; }

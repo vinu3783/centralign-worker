@@ -6,12 +6,30 @@ from typing import Any
 
 from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.types import TypeDecorator
 
 from app.database.session import Base
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class UTCDateTime(TypeDecorator):
+    """Timezone-aware datetimes on every backend (SQLite drops tzinfo on storage)."""
+
+    impl = DateTime(timezone=True)
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc) if value is not None else None
+
+    def process_result_value(self, value, dialect):
+        if value is not None and value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value
 
 
 # ---------------------------------------------------------------- CRM domain
@@ -32,7 +50,7 @@ class Customer(Base):
     company: Mapped[str] = mapped_column(String(160))
     status: Mapped[str] = mapped_column(String(40), default="Active")
     risk_level: Mapped[str] = mapped_column(String(20), default="low")
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, onupdate=utcnow)
 
     invoices: Mapped[list[Invoice]] = relationship(back_populates="customer")
     tickets: Mapped[list[SupportTicket]] = relationship(back_populates="customer")
@@ -47,7 +65,7 @@ class Invoice(Base):
     amount: Mapped[float] = mapped_column(Float)
     due_date: Mapped[date] = mapped_column(Date)
     status: Mapped[str] = mapped_column(String(20), index=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     customer: Mapped[Customer] = relationship(back_populates="invoices")
 
@@ -61,7 +79,7 @@ class SupportTicket(Base):
     priority: Mapped[str] = mapped_column(String(20), index=True)
     status: Mapped[str] = mapped_column(String(20), index=True)
     description: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
     customer: Mapped[Customer] = relationship(back_populates="tickets")
 
@@ -75,7 +93,7 @@ class Activity(Base):
     customer_id: Mapped[int | None] = mapped_column(ForeignKey("customers.id"), index=True, nullable=True)
     action: Mapped[str] = mapped_column(String(200))
     actor: Mapped[str] = mapped_column(String(120), default="system")
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     meta: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, default=dict)
 
 
@@ -90,7 +108,7 @@ class OutboxMessage(Base):
     subject: Mapped[str] = mapped_column(String(200))
     body: Mapped[str] = mapped_column(Text)
     run_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 # ------------------------------------------------------------ Agent records
@@ -102,7 +120,7 @@ class Task(Base):
     id: Mapped[str] = mapped_column(String(40), primary_key=True)
     goal: Mapped[str] = mapped_column(Text)
     options: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class Run(Base):
@@ -120,8 +138,8 @@ class Run(Base):
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     verification_passed: Mapped[bool | None] = mapped_column(nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
+    finished_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class RunEvent(Base):
@@ -134,7 +152,7 @@ class RunEvent(Base):
     seq: Mapped[int] = mapped_column(Integer)
     type: Mapped[str] = mapped_column(String(40))
     payload: Mapped[dict[str, Any]] = mapped_column(JSON)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class AuditLog(Base):
@@ -142,7 +160,7 @@ class AuditLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     run_id: Mapped[str] = mapped_column(ForeignKey("runs.id"), index=True)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow, index=True)
     agent_step: Mapped[str] = mapped_column(String(60))
     tool: Mapped[str | None] = mapped_column(String(80), nullable=True)
     input: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -165,8 +183,8 @@ class Approval(Base):
     status: Mapped[str] = mapped_column(String(20), default="pending")
     decided_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
-    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
-    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
+    decided_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
 
 
 class Evidence(Base):
@@ -183,7 +201,7 @@ class Evidence(Base):
     after: Mapped[Any] = mapped_column(JSON, nullable=True)
     verified: Mapped[bool | None] = mapped_column(nullable=True)
     details: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    timestamp: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
 
 
 class AgentMemory(Base):
@@ -196,4 +214,4 @@ class AgentMemory(Base):
     kind: Mapped[str] = mapped_column(String(40))  # task_outcome | tool_reliability
     run_id: Mapped[str | None] = mapped_column(String(40), nullable=True)
     value: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime(), default=utcnow)
