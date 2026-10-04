@@ -35,7 +35,7 @@ class RunManager:
                  llm: LLMProvider | None = None, checkpointer: Any = None, sleep: Any = None):
         self.settings = settings or get_settings()
         self.runtime = AgentRuntime(registry=registry or get_registry(), llm=llm or build_provider(self.settings),
-                                    settings=self.settings, **({"sleep": sleep} if sleep else {}))
+                                    settings=self.settings, **({"sleep": sleep} if sleep is not None else {}))
         self.graph = build_graph(self.runtime, checkpointer or make_checkpointer(self.settings.checkpoint_db_path))
         self._threads: dict[str, threading.Thread] = {}
         self._lock = threading.Lock()

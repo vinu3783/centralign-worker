@@ -168,7 +168,11 @@ def _checkpoint_allowlist() -> list[tuple[str, str]]:
     return allowed
 
 
+def make_serde() -> JsonPlusSerializer:
+    return JsonPlusSerializer(allowed_msgpack_modules=_checkpoint_allowlist())
+
+
 def make_checkpointer(path: str) -> SqliteSaver:
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path, check_same_thread=False)
-    return SqliteSaver(conn, serde=JsonPlusSerializer(allowed_msgpack_modules=_checkpoint_allowlist()))
+    return SqliteSaver(conn, serde=make_serde())
