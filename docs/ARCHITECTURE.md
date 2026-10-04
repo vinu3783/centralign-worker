@@ -60,7 +60,7 @@ $item.id                           the current for_each item's field
 - *DEMO mode:* `rule_parser.parse_goal` (a compositional grammar for entities, conditions, grouping, actions and channel) followed by `planner.compile_plan` (goal → search primary entity → optional `group_records` → resolve customers → one `for_each` step per action).
 - *LLM mode:* the LLM returns `StructuredGoal` JSON (validated by `check_goal`: field names and enum values), then `Plan` JSON built from the live tool catalog. Invalid output is fed back once at the provider level, and validator errors are fed back at the graph level. If the LLM fails, the app falls back to the rule compiler and says so in the timeline.
 
-Both paths produce the same types and pass through the same `validate_plan`.
+Both paths produce the same types and pass through the same `validate_plan`. In LLM mode, `ground_actions` keeps only actions backed by an exact, type-appropriate quote from the request. `validate_plan(plan, registry, max_steps, goal)` also checks the plan against the goal: write steps must match goal actions, every goal entity must be touched, and every goal condition must be applied as a filter (using each tool's `filter_semantics`). See the README's "Guarding against LLM mistakes" for the failures these checks were built from.
 
 ## 3. Tool registry
 
@@ -95,7 +95,7 @@ The agent loop does not know which channel a tool uses. Browser, API, file and c
 1. The LLM output is **data** (JSON validated into Pydantic models), never code.
 2. **Plan validation** before execution: tools must be in the allowlist, argument names must exist in the schema, required arguments must be present, references must point backwards, `$item` may only appear in `for_each` steps, and plans have a size cap. Literal arguments are fully schema-validated.
 3. **Call-time validation** after references are resolved (strict schemas, enums and ranges).
-4. **Risk-gated approval** for writes at or above the threshold, with a ground-truth preview.
+4. **Risk-gated approval** for writes at or above the threshold, with a ground-truth preview. If goal understanding reported an ambiguity, approval is required even when the run is set to auto-approve.
 5. **No escape hatches:** no shell, SQL, eval or arbitrary-URL tools. The file tool is restricted to a sandbox. The browser tool only navigates to the configured CRM UI.
 6. **Bounded autonomy:** max 3 retries, 1 fallback, 1 re-plan, 1 remediation, 3 plan attempts, and a graph recursion limit.
 7. **Auditability:** every node decision and tool call goes to `audit_logs` (secrets scrubbed, payloads capped). Every UI-visible event is persisted to `run_events`.

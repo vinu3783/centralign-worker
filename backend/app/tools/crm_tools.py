@@ -95,6 +95,7 @@ class SearchInvoices(Tool):
     description = "Search invoices by status, amount range, customer and due date. Returns invoice records incl. customer_id and customer_name."
     input_model = SearchInvoicesInput
     entity = "invoice"
+    output_fields = ["id", "invoice_number", "customer_id", "customer_name", "amount", "due_date", "status", "days_overdue"]
     filter_semantics = {
         "status": ("status", "in"), "amount_gt": ("amount", "greater_than"),
         "amount_gte": ("amount", "greater_or_equal"), "amount_lt": ("amount", "less_than"),
@@ -137,6 +138,7 @@ class GetInvoice(Tool):
     description = "Fetch a single invoice by id."
     input_model = GetInvoiceInput
     entity = "invoice"
+    output_fields = ["id", "invoice_number", "customer_id", "customer_name", "amount", "due_date", "status", "days_overdue"]
 
     def execute(self, args: GetInvoiceInput, ctx: ToolContext) -> ToolResult:
         with session_scope() as db:
@@ -159,6 +161,7 @@ class SearchCustomers(Tool):
     description = "Search customers by ids, status, risk level or text. Use ids=[...] to resolve customers referenced by invoices/tickets."
     input_model = SearchCustomersInput
     entity = "customer"
+    output_fields = ["id", "name", "company", "email", "status", "risk_level"]
     filter_semantics = {"ids": ("id", "in"), "status": ("status", "in"), "risk_level": ("risk_level", "in")}
 
     def execute(self, args: SearchCustomersInput, ctx: ToolContext) -> ToolResult:
@@ -190,6 +193,7 @@ class GetCustomer(Tool):
     description = "Fetch a single customer by id."
     input_model = GetCustomerInput
     entity = "customer"
+    output_fields = ["id", "name", "company", "email", "status", "risk_level"]
 
     def execute(self, args: GetCustomerInput, ctx: ToolContext) -> ToolResult:
         with session_scope() as db:
@@ -208,6 +212,7 @@ class SearchTickets(Tool):
     description = "Search support tickets by status, priority and customer. Returns ticket records incl. customer_id."
     input_model = SearchTicketsInput
     entity = "ticket"
+    output_fields = ["id", "customer_id", "customer_name", "subject", "priority", "status"]
     filter_semantics = {"status": ("status", "in"), "priority": ("priority", "in"),
                         "customer_ids": ("customer_id", "in")}
 
@@ -272,6 +277,7 @@ class UpdateCustomerStatus(Tool):
     risk_level = RiskLevel.MEDIUM
     kind = "write"
     entity = "customer"
+    output_fields = ["customer_id", "label", "field", "before", "after", "changed"]
 
     def execute(self, args: UpdateCustomerStatusInput, ctx: ToolContext) -> ToolResult:
         with session_scope() as db:

@@ -58,6 +58,36 @@ def check_goal(goal: StructuredGoal) -> list[str]:
     return errors
 
 
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9₹]+", " ", text.lower()).strip()
+
+
+# Words that must appear in the quoted evidence for each action type.
+ACTION_CUES: dict[str, tuple[str, ...]] = {
+    "update_customer_status": ("status", "mark", "set", "flag", "move", "bump", "update", "change", "make",
+                               "priority", "risk", "active", "inactive", "tag", "prioriti"),
+    "update_ticket_priority": ("priority", "escalate", "raise", "lower", "bump", "urgent"),
+    "send_customer_email": ("email", "e mail", "mail", "notify", "remind", "message", "contact", "send"),
+    "export_report": ("export", "csv", "report", "download", "spreadsheet", "file", "save"),
+    "record_activity": ("note", "log", "activity", "record", "comment"),
+}
+
+
+def ground_actions(goal: StructuredGoal, text: str) -> list[str]:
+    """Keep only actions the LLM can back with an exact quote from the request that
+    actually asks for that kind of action."""
+    notes, kept, source = [], [], _norm(text)
+    for a in goal.actions:
+        quote = _norm(a.evidence or "")
+        if quote and quote in source and any(cue in quote for cue in ACTION_CUES[a.type]):
+            kept.append(a)
+        else:
+            notes.append(f"Dropped action '{a.type}' proposed by the LLM: the request doesn't ask for it "
+                         f"(quoted evidence: {a.evidence!r})")
+    goal.actions = kept
+    return notes
+
+
 def interpret_goal(text: str, llm: LLMProvider) -> tuple[StructuredGoal, str, list[str]]:
     """Returns (goal, source, notes)."""
     if llm.is_demo:
@@ -66,8 +96,9 @@ def interpret_goal(text: str, llm: LLMProvider) -> tuple[StructuredGoal, str, li
         goal = llm.structured(prompts.UNDERSTAND_SYSTEM, text, StructuredGoal)
         errors = check_goal(goal)
         if not errors:
-            goal.required_actions = goal.required_actions or required_actions(goal)
-            return goal, "llm", []
+            notes = ground_actions(goal, text)
+            goal.required_actions = required_actions(goal)
+            return goal, "llm", notes
         note = f"LLM goal rejected by validator ({'; '.join(errors)}); used rule-based parser instead"
     except LLMError as exc:
         note = f"LLM unavailable ({exc}); used rule-based parser instead"
@@ -198,8 +229,38 @@ def create_plan(goal: StructuredGoal, llm: LLMProvider, registry: ToolRegistry, 
 
 # --------------------------------------------------------------- validation
 
-def validate_plan(plan: Plan, registry: ToolRegistry, max_steps: int) -> list[str]:
+# Which write tools each goal action authorises. A plan may not write anything the goal didn't ask for.
+ACTION_TOOLS: dict[str, set[str]] = {
+    "update_customer_status": {"update_customer_status", "browser_update_customer_status"},
+    "update_ticket_priority": {"update_ticket_priority"},
+    "send_customer_email": {"send_customer_email"},
+    "export_report": {"export_report"},
+    "record_activity": {"record_activity"},
+}
+
+
+def validate_plan(plan: Plan, registry: ToolRegistry, max_steps: int,
+                  goal: StructuredGoal | None = None) -> list[str]:
     errors: list[str] = []
+    if goal is not None:
+        allowed = set().union(*(ACTION_TOOLS[a.type] for a in goal.actions)) if goal.actions else set()
+        requested = [a.type for a in goal.actions] or ["none (read-only goal)"]
+        for step in plan.steps:
+            if registry.has(step.tool) and registry.get(step.tool).kind == "write" and step.tool not in allowed:
+                errors.append(f"step {step.id} ({step.tool}): performs a write the goal did not ask for; "
+                              f"requested actions: {requested}. Remove this step.")
+        applied = {(registry.get(st.tool).entity, registry.get(st.tool).filter_semantics[a][0])
+                   for st in plan.steps if registry.has(st.tool)
+                   for a in st.args if a in registry.get(st.tool).filter_semantics}
+        for c in goal.conditions:
+            if (c.entity, c.field) not in applied:
+                errors.append(f"the goal's condition {c.entity}.{c.field} {c.operator} {c.value!r} is not applied by any "
+                              f"step; filter on it (e.g. in search_{c.entity}s)")
+        touched = {registry.get(st.tool).entity for st in plan.steps if registry.has(st.tool)}
+        for entity in goal.entities:
+            if entity not in touched:
+                errors.append(f"the goal involves {entity}s but no step reads or updates {entity} records "
+                              f"(e.g. add a search_{entity}s step)")
     if not plan.steps:
         return ["Plan has no steps"]
     if len(plan.steps) > max_steps:

@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     seed_on_start: bool = True
 
     # LLM: "demo" uses deterministic rule-based understanding/planning.
-    llm_provider: Literal["demo", "openai", "gemini"] = "demo"
+    llm_provider: Literal["demo", "openai", "gemini", "groq"] = "demo"
     llm_api_key: str | None = None
     llm_base_url: str | None = None
     llm_model: str | None = None

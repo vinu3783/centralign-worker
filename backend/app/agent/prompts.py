@@ -17,13 +17,15 @@ Return ONLY JSON with this shape:
   "entities": [..],
   "conditions": [{"entity": .., "field": .., "operator": "equals|not_equals|greater_than|greater_or_equal|less_than|less_or_equal|in", "value": ..}],
   "group_condition": null | {"entity": "invoice"|"ticket", "by": "customer_id", "min_count": int},
-  "actions": [{"type": "update_customer_status|update_ticket_priority|send_customer_email|export_report|record_activity", "value": str|null, "channel": "api"|"browser"}],
+  "actions": [{"type": "update_customer_status|update_ticket_priority|send_customer_email|export_report|record_activity", "value": str|null, "channel": "api"|"browser", "evidence": "<exact words copied from the request that ask for this action>"}],
   "required_actions": [short snake_case verbs],
   "ambiguities": [str],
   "clarification_needed": null | str
 }
 Rules: amounts are plain numbers (₹50,000 -> 50000). Only use the fields listed above.
-"more than one X" -> group_condition min_count 2. Only include actions the user explicitly asked for.
+"more than one X" -> group_condition min_count 2. Only include actions the user explicitly asked for, and copy the
+exact words that ask for each one into "evidence". Showing/listing results is NOT an action (no export, no notes). Verification is automatic: never create an
+action for "verify"/"check" wording.
 If the request needs something the CRM cannot do (e.g. deleting records, payments), set clarification_needed."""
 
 
@@ -36,6 +38,8 @@ Data flow between steps uses references (strings starting with $):
   "$s1.data[*].customer_id|unique"   -> distinct customer ids from s1's records
   "$item.id"                         -> inside a for_each step, the current item's field
 A step with "for_each" runs its tool once per item of the referenced list (use this for record updates).
+Each tool lists its "output_record_fields": these are the ONLY fields you may reference. Customer records use
+"id" (not "customer_id"); invoice/ticket records carry "customer_id".
 Rules:
 - Never invent tools or arguments. Use only argument names from each tool's input_schema.
 - Read before you write. Resolve customers with search_customers(ids=...) when the goal concerns customers.
@@ -45,7 +49,8 @@ Rules:
 
 def plan_user_prompt(goal: dict[str, Any], tools: list[dict[str, Any]], errors: list[str],
                      replan_reason: str | None) -> str:
-    compact = [{k: t[k] for k in ("name", "description", "input_schema", "risk_level", "kind")} for t in tools]
+    compact = [{k: t[k] for k in ("name", "description", "input_schema", "risk_level", "kind", "output_record_fields")}
+               for t in tools]
     parts = [f"GOAL:\n{json.dumps(goal, indent=1)}", f"TOOLS:\n{json.dumps(compact)}"]
     if errors:
         parts.append("Your previous plan was rejected by the validator:\n- " + "\n- ".join(errors))

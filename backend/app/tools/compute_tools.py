@@ -22,6 +22,7 @@ class GroupRecords(Tool):
     input_model = GroupRecordsInput
     kind = "compute"
     channel = "compute"
+    output_fields = ["key", "count", "record_ids", "label", "total"]
 
     def execute(self, args: GroupRecordsInput, ctx: ToolContext) -> ToolResult:
         groups: dict[Any, list[dict[str, Any]]] = {}

@@ -93,6 +93,8 @@ class Tool(ABC):
     # Maps input arg -> (record field, operator); lets the verifier independently
     # re-check every returned record against the filters that produced it.
     filter_semantics: ClassVar[dict[str, tuple[str, str]]] = {}
+    # Fields of each record in `data` (told to the planner so references are valid).
+    output_fields: ClassVar[list[str]] = []
 
     @abstractmethod
     def execute(self, args: Any, ctx: ToolContext) -> ToolResult: ...
@@ -115,4 +117,5 @@ class Tool(ABC):
             "channel": self.channel,
             "entity": self.entity,
             "fallback_tool": self.fallback_tool,
+            "output_record_fields": self.output_fields,
         }

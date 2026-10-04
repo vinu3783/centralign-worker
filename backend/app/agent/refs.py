@@ -51,7 +51,8 @@ def refs_in(value: Any) -> list[str]:
 
 def _field(obj: Any, name: str, ref: str) -> Any:
     if not isinstance(obj, dict) or name not in obj:
-        raise RefError(f"'{name}' not found while resolving {ref}")
+        available = f" (available fields: {', '.join(obj)})" if isinstance(obj, dict) else ""
+        raise RefError(f"'{name}' not found while resolving {ref}{available}")
     return obj[name]
 
 

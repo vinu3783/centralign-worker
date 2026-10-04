@@ -146,6 +146,14 @@ def parse_goal(text: str) -> StructuredGoal:
         conditions += _ticket_conditions(cond_text)
     conditions += _customer_conditions(cond_text, t)
 
+    # Nothing beyond the entity was understood in a non-trivial request: ask rather than
+    # silently running a broad, meaningless query and calling it a success.
+    if not conditions and not actions and group is None and len(t.split()) > 8:
+        return _clarify(text, primary, "I recognised that this is about "
+                        f"{primary}s, but not which records or what to do with them. Try phrasing it with "
+                        "statuses, amounts or priorities, e.g. 'overdue invoices above ₹20,000' or "
+                        "'set their status to At Risk'.")
+
     entities = [primary]
     involves_customer = positions["customer"] is not None or any(
         a.type in ("update_customer_status", "send_customer_email", "record_activity") for a in actions)

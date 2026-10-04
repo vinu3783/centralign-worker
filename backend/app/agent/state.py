@@ -49,6 +49,7 @@ class GoalAction(BaseModel):
     type: ActionType
     value: str | None = None  # new status / priority / email subject / note
     channel: Literal["api", "browser"] = "api"
+    evidence: str | None = None  # LLM mode: exact words in the request that ask for this action
 
 
 class StructuredGoal(BaseModel):

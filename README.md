@@ -106,7 +106,7 @@ backend/app/
               memory_service.py, run_store.py, scenarios.py
   api/        crm.py, tasks.py, runs.py, approvals.py, routes.py
   database/   models.py, session.py, seed.py
-  tests/      67 pytest tests
+  tests/      73 pytest tests
 frontend/src/ pages/, components/run/ (timeline, phase stepper, cards, result panel), hooks/, services/
 frontend/e2e/ Playwright end-to-end tests
 ```
@@ -162,12 +162,12 @@ stateDiagram-v2
 |---|---|
 | Backend | Python 3.11, FastAPI, Pydantic v2, SQLAlchemy 2 |
 | Agent | LangGraph (StateGraph, `interrupt`, SQLite checkpointer) |
-| LLM | OpenAI-compatible provider (OpenAI, gateways, local servers), Gemini via its OpenAI-compatible endpoint, deterministic DEMO provider |
+| LLM | OpenAI-compatible provider (OpenAI, gateways, local servers), **Groq** (verified live with `openai/gpt-oss-120b`), Gemini via its OpenAI-compatible endpoint, deterministic DEMO provider |
 | Browser use | Playwright (Chromium, headless) |
 | Database | SQLite by default; `DATABASE_URL` takes any SQLAlchemy URL (e.g. PostgreSQL) |
 | Frontend | React 19, Vite, TypeScript (strict), Tailwind CSS 4, lucide icons |
 | Realtime | WebSockets with history replay, reconnect and a polling fallback |
-| Tests | pytest (67), Playwright E2E (7) |
+| Tests | pytest (73), Playwright E2E (7) |
 | Packaging | Dockerfile (multi-stage) and docker-compose |
 
 ## 5. Setup
@@ -197,7 +197,7 @@ Copy `.env.example` to `.env` (repo root or `backend/`). All settings are option
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `LLM_PROVIDER` | `demo` | `demo`, `openai` or `gemini`. Without `LLM_API_KEY` the app always runs in DEMO mode |
+| `LLM_PROVIDER` | `demo` | `demo`, `openai`, `groq` or `gemini`. Without `LLM_API_KEY` the app always runs in DEMO mode |
 | `LLM_API_KEY` | – | Read from the environment only, never logged (the audit log scrubs secret-like keys) |
 | `LLM_BASE_URL` / `LLM_MODEL` | provider defaults | Any OpenAI-compatible endpoint |
 | `APPROVAL_THRESHOLD` | `medium` | Minimum tool risk that needs a human (`none` / `low` / `medium` / `high`) |
@@ -215,7 +215,7 @@ The image builds the UI, installs Chromium for browser tools, and serves everyth
 
 ## 6. Running tests
 ```bash
-cd backend && pytest                 # 67 tests, ~4 s, isolated temp database
+cd backend && pytest                 # 73 tests, ~5 s, isolated temp database (always DEMO mode)
 cd frontend && npx playwright test   # 7 E2E tests; starts its own backend (:8100) + UI (:5174)
 cd frontend && npm run build         # strict TypeScript typecheck + production build
 ```
@@ -294,6 +294,21 @@ Verification never trusts tool responses:
 
 Evidence is stored in the `evidence` table: changed records (before/after, verified flag, tool, call ID, attempts, screenshot), source records, and artifacts. The final summary is built from these facts. If nothing matched, or verification failed, the run ends as **needs_attention**, never "completed".
 
+### Guarding against LLM mistakes (found by testing against a real model)
+
+Running the agent against Groq's `openai/gpt-oss-120b` surfaced real failure modes. Each is now caught deterministically:
+
+| Observed LLM behaviour | Safeguard |
+|---|---|
+| Added actions nobody asked for (CSV exports, activity notes; once mapping "verify the updates" to a note) | **Grounding:** each extracted action must quote words from the request, and the quote must fit the action type. Otherwise it is dropped and the timeline says so |
+| Plans with writes outside the goal | **Write alignment:** every write step must correspond to a goal action |
+| Plan skipped a goal entity ("show me the affected customers" without fetching customers) | **Entity coverage:** every goal entity must be read or written by some step |
+| Plan dropped a filter from the goal | **Condition coverage:** every goal condition must be applied by a step's filters |
+| Referenced a field that doesn't exist (`$item.customer_id` on customer records) | Tools publish their **output record fields** to the planner. Reference errors list the available fields, so re-planning has actionable feedback |
+| Ambiguous request ("risky" = risk level or status?) read inconsistently between runs | **Ambiguity forces a human:** if understanding reports an ambiguity, write steps require approval even when auto-approve is on, and the approval message shows the ambiguity |
+
+Validator rejections feed back into re-planning. With these checks the four required tasks, a free-form request and the full demo scenario run correctly in LLM mode, and the ambiguous request never writes without a human.
+
 ## 12. Security considerations
 
 - **Allowlisted tools only.** The LLM produces JSON data, never code. Plans are validated (tool names, argument names, schemas, references) before anything runs, and arguments are validated again at call time with `extra="forbid"` models.
@@ -316,7 +331,7 @@ Evidence is stored in the `evidence` table: changed records (before/after, verif
 
 ## 14. Known limitations
 
-- **LLM mode has not been run against a live model here** (no API key was available). The LLM path (structured JSON → validation → invalid plan rejected → re-plan) is covered by a test with a scripted fake provider. If the LLM fails, the app falls back to the rule planner and labels it.
+- **LLM output varies between runs.** The safeguards above stop wrong *writes*, but an LLM can still answer a read-only question with a different (validated, verified) interpretation than you intended. The Goal understanding card shows exactly what was understood. LLM mode was verified live with Groq `openai/gpt-oss-120b`; automated tests use a scripted fake LLM so they are deterministic. If the LLM fails, the app falls back to the rule planner and labels it.
 - **Docker image build not verified** (Docker was not installed). The runtime mode it uses was verified locally.
 - **The DEMO grammar is finite.** It handles combinations of the supported entities, filters and actions. Anything else gets a clarification request rather than a guess.
 - **Single process.** Runs execute on threads and events fan out in-process. Horizontal scaling needs a job queue and a shared pub/sub.

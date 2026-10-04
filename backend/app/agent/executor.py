@@ -119,7 +119,8 @@ def select_tool(state: AgentState, rt: AgentRuntime) -> dict[str, Any]:
                 continue
 
         if tool.kind == "write" and sr.approved is None and requires_approval(tool.risk_level, s.options.approval_threshold):
-            if s.options.auto_approve:
+            ambiguous = bool(s.normalized_goal and s.normalized_goal.ambiguities)
+            if s.options.auto_approve and not ambiguous:
                 sr.approved = True
                 s.approvals.append(ApprovalInfo(step_id=step.id, tool=step.tool, risk_level=tool.risk_level.value,
                                                 message="Auto-approved by run policy", status="auto_approved",
@@ -127,6 +128,9 @@ def select_tool(state: AgentState, rt: AgentRuntime) -> dict[str, Any]:
                 rt.emit(s, "approval", node="select_tool", status="info", step_id=step.id, tool=step.tool,
                         title=f"{tool.risk_level.value.upper()}-risk step auto-approved by run policy")
             else:
+                if s.options.auto_approve:
+                    rt.emit(s, "approval", node="select_tool", status="warning", step_id=step.id, tool=step.tool,
+                            title="Auto-approve overridden: the request was ambiguous, so a human must confirm this change")
                 s.route = "approval"
                 return updates(s)
         elif tool.kind == "write" and sr.approved is None:

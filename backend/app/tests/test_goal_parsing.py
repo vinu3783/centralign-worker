@@ -86,3 +86,23 @@ def test_check_goal_canonicalizes_case():
     g = StructuredGoal(objective="x", primary_entity="customer", entities=["customer"],
                        conditions=[Condition(entity="customer", field="status", operator="equals", value="at risk")])
     assert check_goal(g) == [] and g.conditions[0].value == "At Risk"
+
+
+def test_unparseable_long_request_asks_instead_of_guessing():
+    g = parse_goal("Which clients owe us money that's already late? Bump the risky ones to At Risk.")
+    assert g.clarification_needed
+    assert parse_goal("show me all customers").clarification_needed is None
+
+
+def test_llm_actions_must_be_grounded_in_the_request():
+    from app.agent.planner import ground_actions
+    from app.agent.state import GoalAction
+
+    text = "Find unpaid invoices, update their status to High Priority, and verify that the updates were successful."
+    g = StructuredGoal(objective="x", primary_entity="invoice", entities=["invoice", "customer"], actions=[
+        GoalAction(type="update_customer_status", value="High Priority", evidence="update their status to High Priority"),
+        GoalAction(type="record_activity", evidence="verify that the updates were successful"),  # real quote, wrong action
+        GoalAction(type="export_report", evidence="export everything to csv"),  # not in the request
+    ])
+    notes = ground_actions(g, text)
+    assert [a.type for a in g.actions] == ["update_customer_status"] and len(notes) == 2

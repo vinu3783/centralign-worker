@@ -90,7 +90,7 @@ def create_plan(state: AgentState, rt: AgentRuntime) -> dict[str, Any]:
 def validate_plan(state: AgentState, rt: AgentRuntime) -> dict[str, Any]:
     s = state.model_copy(deep=True)
     assert s.plan is not None
-    errors = planner.validate_plan(s.plan, rt.registry, rt.settings.max_plan_steps)
+    errors = planner.validate_plan(s.plan, rt.registry, rt.settings.max_plan_steps, s.normalized_goal)
     steps_view = []
     for st in s.plan.steps:
         tool = rt.registry.get(st.tool) if rt.registry.has(st.tool) else None

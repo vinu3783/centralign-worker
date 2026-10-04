@@ -74,3 +74,28 @@ def test_reference_resolver():
         resolve_ref("$s1.data[*].nope", scope)
     with pytest.raises(RefError):
         resolve_ref("$s1.__class__", {"s1": object()})
+
+
+def test_validator_rejects_writes_the_goal_did_not_ask_for():
+    goal = parse_goal("Find all open support tickets with high priority and show me the affected customers.")
+    plan = compile_plan(goal, REG)
+    plan.steps.append(PlanStep(id="s3", description="extra", tool="export_report",
+                               args={"filename": "x", "rows": "$s2.data"}))
+    errors = validate_plan(plan, REG, 12, goal)
+    assert any("did not ask for" in e for e in errors)
+    assert validate_plan(compile_plan(goal, REG), REG, 12, goal) == []
+
+
+def test_validator_requires_every_goal_entity_to_be_covered():
+    goal = parse_goal("Find all open support tickets with high priority and show me the affected customers.")
+    plan = compile_plan(goal, REG)
+    plan.steps = plan.steps[:1]  # drop the customer lookup
+    assert any("involves customers" in e for e in validate_plan(plan, REG, 12, goal))
+
+
+def test_validator_requires_every_goal_condition_to_be_applied():
+    goal = parse_goal("overdue invoices from high risk customers, set their status to At Risk")
+    plan = compile_plan(goal, REG)
+    assert validate_plan(plan, REG, 12, goal) == []
+    plan.steps[1].args.pop("risk_level")  # silently drop the customer filter
+    assert any("risk_level" in e and "not applied" in e for e in validate_plan(plan, REG, 12, goal))

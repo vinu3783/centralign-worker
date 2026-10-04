@@ -18,6 +18,7 @@ log = logging.getLogger(__name__)
 T = TypeVar("T", bound=BaseModel)
 
 GEMINI_OPENAI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+GROQ_OPENAI_BASE_URL = "https://api.groq.com/openai/v1"
 
 
 class LLMError(RuntimeError):
@@ -100,12 +101,21 @@ class GeminiProvider(OpenAICompatibleProvider):
     name = "gemini"
 
 
+class GroqProvider(OpenAICompatibleProvider):
+    """Groq (open models such as Llama) through its OpenAI-compatible endpoint."""
+
+    name = "groq"
+
+
 def build_provider(settings: Settings | None = None) -> LLMProvider:
     s = settings or get_settings()
     if s.llm_provider == "demo" or not s.llm_api_key:
         if s.llm_provider != "demo":
             log.warning("LLM_PROVIDER=%s but no LLM_API_KEY set; falling back to DEMO mode", s.llm_provider)
         return DemoProvider()
+    if s.llm_provider == "groq":
+        return GroqProvider(s.llm_api_key, s.llm_model or "openai/gpt-oss-120b",
+                            s.llm_base_url or GROQ_OPENAI_BASE_URL, s.llm_timeout_seconds)
     if s.llm_provider == "gemini":
         return GeminiProvider(s.llm_api_key, s.llm_model or "gemini-2.0-flash",
                               s.llm_base_url or GEMINI_OPENAI_BASE_URL, s.llm_timeout_seconds)

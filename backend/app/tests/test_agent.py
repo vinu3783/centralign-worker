@@ -186,7 +186,8 @@ class ScriptedLLM(LLMProvider):
             "entities": ["invoice", "customer"],
             "conditions": [{"entity": "invoice", "field": "status", "operator": "equals", "value": "unpaid"},
                            {"entity": "invoice", "field": "amount", "operator": "greater_than", "value": 50000}],
-            "actions": [{"type": "update_customer_status", "value": "High Priority"}],
+            "actions": [{"type": "update_customer_status", "value": "High Priority", "evidence": "prioritise customers"},
+                        {"type": "export_report", "evidence": "and export a csv"}],  # not in the request: dropped
         })
 
 
@@ -207,3 +208,15 @@ def test_llm_mode_invalid_plan_is_rejected_then_replanned(sleeps):
     assert st.plan.source == "llm" and st.status == "completed"
     assert [status_of(c) for c in TASK1_CUSTOMERS] == ["High Priority"] * 4
     assert st.mode == "llm"
+    assert [a.type for a in st.normalized_goal.actions] == ["update_customer_status"]
+    assert any("Dropped action 'export_report'" in e.get("title", "") for e in history(run_id))
+
+
+def test_ambiguous_goal_overrides_auto_approve(manager):
+    # The rule parser flags an unfiltered mass update as ambiguous.
+    run_id, st = run_task(manager, "Mark all customers as Inactive", auto_approve=True)
+    assert st.status == "awaiting_approval"
+    assert "ambiguous" in st.approvals[-1].message
+    assert status_of(1) == "Active"
+    manager.decide(run_id, False, background=False)
+    assert manager.state(run_id).status == "rejected" and status_of(1) == "Active"

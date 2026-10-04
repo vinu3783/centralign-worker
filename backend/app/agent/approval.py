@@ -37,6 +37,8 @@ def request_approval(state: AgentState, rt: AgentRuntime) -> dict[str, Any]:
     tool = rt.registry.get(step.tool)
     preview = [p for p in sr.preview if not p.get("compliant")] or sr.preview
     message = _message(step.description, tool.name, tool.risk_level.value, tool.entity, sr.preview)
+    if s.normalized_goal and s.normalized_goal.ambiguities:
+        message += " Please check my interpretation — the request was ambiguous: " + "; ".join(s.normalized_goal.ambiguities)
     approval_id = run_store.create_approval(s.run_id, step.id, tool.name, tool.risk_level.value, message, preview)
     info = ApprovalInfo(approval_id=approval_id, step_id=step.id, tool=tool.name, risk_level=tool.risk_level.value,
                         message=message, preview=preview)
